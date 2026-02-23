@@ -1,0 +1,64 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Turbo
+.turbo/
+
+# Database
+*.sqlite
+*.db
+
+# Prisma
+backend/prisma/*.db
+backend/prisma/*.db-journal
+
+# Uploads
+uploads/
+tmp/
+
+# Docker volumes (local)
+docker/postgres/data/
+docker/redis/data/
+
+# Generated files
+*.generated.*
+
+# Claude Code IDE workspace
+.claude/
+
+# Additional env file patterns
+.env.multi-db

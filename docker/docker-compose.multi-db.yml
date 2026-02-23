@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  # New Project Database (Postgres 16)
+  checklist_db:
+    image: postgres:16-alpine
+    container_name: checklist_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${CHECKLIST_DB_NAME:-checklist_system}
+      POSTGRES_USER: ${CHECKLIST_DB_USER:-checklist_user}
+      POSTGRES_PASSWORD: ${CHECKLIST_DB_PASSWORD:-checklist_dev_password}
+    volumes:
+      - checklist_postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "${CHECKLIST_DB_PORT:-5432}:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${CHECKLIST_DB_USER:-checklist_user} -d ${CHECKLIST_DB_NAME:-checklist_system}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - db_network
+
+  # Old Project Database (Postgres 14)
+  team_eval_db:
+    image: postgres:14-alpine
+    container_name: team-eval-postgres-multi
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${TEAM_EVAL_DB_NAME:-team_evaluation}
+      POSTGRES_USER: ${TEAM_EVAL_DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${TEAM_EVAL_DB_PASSWORD:-postgres}
+    volumes:
+      - team_eval_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${TEAM_EVAL_DB_PORT:-5434}:5432"
+    networks:
+      - db_network
+
+  # Redis for the new project
+  checklist_redis:
+    image: redis:7-alpine
+    container_name: checklist_redis_multi
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis_dev_password}
+    volumes:
+      - checklist_redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - db_network
+
+volumes:
+  checklist_postgres_data:
+    external: true
+    name: docker_postgres_data # Pointing to existing volume
+  team_eval_postgres_data:
+    external: true
+    name: d0dd5f988247b0b5fc5a7770ba67f497b12679c0fe570c7cda029b49c99c31d9 # Pointing to existing volume ID or name
+  checklist_redis_data:
+    external: true
+    name: docker_redis_data
+
+networks:
+  db_network:
+    driver: bridge

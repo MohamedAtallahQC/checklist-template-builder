@@ -1,0 +1,538 @@
+// Prisma Schema for Checklist Management System
+// Uses PostgreSQL with extensions: uuid-ossp, pgcrypto, ltree
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum UserStatus {
+  active
+  inactive
+  suspended
+  pending
+}
+
+enum InvitationStatus {
+  pending
+  accepted
+  expired
+  revoked
+}
+
+enum AuditAction {
+  create
+  read
+  update
+  delete
+  login
+  logout
+  invite
+  assign
+  export
+  import
+  sync
+}
+
+enum ChecklistItemStatus {
+  pending
+  passed
+  failed
+  blocked
+  skipped
+  na
+}
+
+enum ReportStatus {
+  pending
+  generating
+  completed
+  failed
+}
+
+enum ReportFormat {
+  pdf
+  excel
+  csv
+}
+
+enum ProjectRole {
+  owner
+  admin
+  member
+  viewer
+}
+
+// ============================================
+// USER & AUTHENTICATION
+// ============================================
+
+model User {
+  id                  String     @id @default(uuid())
+  email               String     @unique
+  emailVerifiedAt     DateTime?  @map("email_verified_at")
+  passwordHash        String     @map("password_hash")
+  firstName           String     @map("first_name")
+  lastName            String     @map("last_name")
+  phoneNumber         String?    @unique @map("phone_number")
+  avatarUrl           String?    @map("avatar_url")
+  status              UserStatus @default(pending)
+  locale              String     @default("en")
+  timezone            String     @default("UTC")
+  lastLoginAt         DateTime?  @map("last_login_at")
+  passwordChangedAt   DateTime?  @map("password_changed_at")
+  failedLoginAttempts Int        @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime?  @map("locked_until")
+  createdAt           DateTime   @default(now()) @map("created_at")
+  updatedAt           DateTime   @updatedAt @map("updated_at")
+  deletedAt           DateTime?  @map("deleted_at")
+
+  // Relations
+  userRoles           UserRole[]
+  refreshTokens       RefreshToken[]
+  invitationsSent     Invitation[]       @relation("InvitedBy")
+  invitationsAccepted Invitation[]       @relation("AcceptedBy")
+  projectUsers        ProjectUser[]
+  foldersCreated      Folder[]           @relation("FolderCreatedBy")
+  templatesCreated    Template[]         @relation("TemplateCreatedBy")
+  templateTypesCreated TemplateType[]    @relation("TemplateTypeCreatedBy")
+  checklistItemsCreated ChecklistItem[]  @relation("ItemCreatedBy")
+  checklistItemsAssigned ChecklistItem[] @relation("ItemAssignedTo")
+  checklistItemsCompleted ChecklistItem[] @relation("ItemCompletedBy")
+  itemResponses       ItemResponse[]
+  reports             Report[]
+  auditLogs           AuditLog[]
+  projectsCreated     Project[]          @relation("ProjectCreatedBy")
+  permissionRulesCreated PermissionRule[] @relation("PermissionRuleCreatedBy")
+  rolesAssigned       UserRole[]         @relation("RoleAssignedBy")
+  clickupIntegrations ClickupIntegration[]
+  clickupMappings     ClickupUserMapping[]
+
+  @@index([email])
+  @@index([status])
+  @@map("users")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  tokenHash  String    @unique @map("token_hash")
+  deviceInfo Json?     @map("device_info")
+  ipAddress  String?   @map("ip_address")
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ============================================
+// ROLES & PERMISSIONS
+// ============================================
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  displayName String   @map("display_name")
+  description String?
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+  invitations     Invitation[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  resource    String
+  action      String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  rolePermissions RolePermission[]
+
+  @@unique([resource, action])
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String   @map("role_id")
+  permissionId String   @map("permission_id")
+  conditions   Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  userId     String   @map("user_id")
+  roleId     String   @map("role_id")
+  assignedBy String?  @map("assigned_by")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+
+  user       User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  assignedByUser User? @relation("RoleAssignedBy", fields: [assignedBy], references: [id])
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model PermissionRule {
+  id             String   @id @default(uuid())
+  name           String
+  description    String?
+  ruleDefinition Json     @map("rule_definition")
+  priority       Int      @default(0)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdBy      String?  @map("created_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  creator User? @relation("PermissionRuleCreatedBy", fields: [createdBy], references: [id])
+
+  @@map("permission_rules")
+}
+
+// ============================================
+// INVITATIONS
+// ============================================
+
+model Invitation {
+  id         String           @id @default(uuid())
+  email      String
+  invitedBy  String           @map("invited_by")
+  roleId     String?          @map("role_id")
+  projectIds String[]         @default([]) @map("project_ids")
+  tokenHash  String           @unique @map("token_hash")
+  status     InvitationStatus @default(pending)
+  message    String?
+  expiresAt  DateTime         @map("expires_at")
+  acceptedAt DateTime?        @map("accepted_at")
+  acceptedBy String?          @map("accepted_by")
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  inviter      User  @relation("InvitedBy", fields: [invitedBy], references: [id])
+  role         Role? @relation(fields: [roleId], references: [id])
+  acceptedUser User? @relation("AcceptedBy", fields: [acceptedBy], references: [id])
+
+  @@index([email])
+  @@index([tokenHash])
+  @@map("invitations")
+}
+
+// ============================================
+// PROJECTS
+// ============================================
+
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  slug        String   @unique
+  icon        String?
+  color       String?
+  settings    Json     @default("{}")
+  isArchived  Boolean  @default(false) @map("is_archived")
+  createdBy   String   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  creator      User          @relation("ProjectCreatedBy", fields: [createdBy], references: [id])
+  projectUsers ProjectUser[]
+  folders      Folder[]
+  templates    Template[]
+  reports      Report[]
+  clickupIntegrations ClickupIntegration[]
+
+  @@index([slug])
+  @@index([isArchived])
+  @@map("projects")
+}
+
+model ProjectUser {
+  projectId   String      @map("project_id")
+  userId      String      @map("user_id")
+  role        ProjectRole @default(member)
+  permissions Json        @default("{}")
+  joinedAt    DateTime    @default(now()) @map("joined_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, userId])
+  @@index([userId])
+  @@map("project_users")
+}
+
+// ============================================
+// FOLDERS (Hierarchical)
+// ============================================
+
+model Folder {
+  id          String    @id @default(uuid())
+  projectId   String    @map("project_id")
+  parentId    String?   @map("parent_id")
+  name        String
+  description String?
+  path        String    // ltree path stored as string (e.g., "root.folder1.subfolder")
+  depth       Int       @default(0)
+  position    Int       @default(0)
+  icon        String?
+  color       String?
+  metadata    Json      @default("{}")
+  createdBy   String    @map("created_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent    Folder?    @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Folder[]   @relation("FolderHierarchy")
+  creator   User       @relation("FolderCreatedBy", fields: [createdBy], references: [id])
+  templates Template[]
+
+  @@index([projectId])
+  @@index([parentId])
+  @@index([path])
+  @@map("folders")
+}
+
+// ============================================
+// TEMPLATE TYPES (Dynamic)
+// ============================================
+
+model TemplateType {
+  id             String    @id @default(uuid())
+  name           String    @unique
+  displayName    String    @map("display_name")
+  description    String?
+  icon           String?
+  color          String?
+  schema         Json      @default("{}")
+  defaultColumns Json      @default("[]") @map("default_columns")
+  isSystem       Boolean   @default(false) @map("is_system")
+  isActive       Boolean   @default(true) @map("is_active")
+  createdBy      String?   @map("created_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  creator   User?      @relation("TemplateTypeCreatedBy", fields: [createdBy], references: [id])
+  templates Template[]
+
+  @@map("template_types")
+}
+
+// ============================================
+// TEMPLATES
+// ============================================
+
+model Template {
+  id               String    @id @default(uuid())
+  projectId        String    @map("project_id")
+  folderId         String?   @map("folder_id")
+  templateTypeId   String    @map("template_type_id")
+  name             String
+  description      String?
+  version          Int       @default(1)
+  position         Int       @default(0)
+  settings         Json      @default("{}")
+  columnConfig     Json      @default("[]") @map("column_config")
+  isLocked         Boolean   @default(false) @map("is_locked")
+  isTemplate       Boolean   @default(true) @map("is_template")
+  parentTemplateId String?   @map("parent_template_id")
+  createdBy        String    @map("created_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  folder         Folder?         @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  templateType   TemplateType    @relation(fields: [templateTypeId], references: [id])
+  parentTemplate Template?       @relation("TemplateInstances", fields: [parentTemplateId], references: [id])
+  instances      Template[]      @relation("TemplateInstances")
+  creator        User            @relation("TemplateCreatedBy", fields: [createdBy], references: [id])
+  checklistItems ChecklistItem[]
+  reports        Report[]
+
+  @@index([projectId])
+  @@index([folderId])
+  @@index([templateTypeId])
+  @@index([position])
+  @@map("templates")
+}
+
+// ============================================
+// CHECKLIST ITEMS
+// ============================================
+
+model ChecklistItem {
+  id          String              @id @default(uuid())
+  templateId  String              @map("template_id")
+  parentId    String?             @map("parent_id")
+  position    Int                 @default(0)
+  content     Json
+  status      ChecklistItemStatus @default(pending)
+  assignedTo  String?             @map("assigned_to")
+  dueDate     DateTime?           @map("due_date")
+  completedAt DateTime?           @map("completed_at")
+  completedBy String?             @map("completed_by")
+  notes       String?
+  attachments Json                @default("[]")
+  createdBy   String              @map("created_by")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+  deletedAt   DateTime?           @map("deleted_at")
+
+  template      Template       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  parent        ChecklistItem? @relation("ItemHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children      ChecklistItem[] @relation("ItemHierarchy")
+  assignee      User?          @relation("ItemAssignedTo", fields: [assignedTo], references: [id])
+  completer     User?          @relation("ItemCompletedBy", fields: [completedBy], references: [id])
+  creator       User           @relation("ItemCreatedBy", fields: [createdBy], references: [id])
+  itemResponses ItemResponse[]
+
+  @@index([templateId])
+  @@index([status])
+  @@index([assignedTo])
+  @@map("checklist_items")
+}
+
+model ItemResponse {
+  id              String              @id @default(uuid())
+  checklistItemId String              @map("checklist_item_id")
+  previousStatus  ChecklistItemStatus? @map("previous_status")
+  newStatus       ChecklistItemStatus @map("new_status")
+  comment         String?
+  evidence        Json                @default("[]")
+  respondedBy     String              @map("responded_by")
+  respondedAt     DateTime            @default(now()) @map("responded_at")
+
+  checklistItem ChecklistItem @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
+  responder     User          @relation(fields: [respondedBy], references: [id])
+
+  @@index([checklistItemId])
+  @@map("item_responses")
+}
+
+// ============================================
+// AUDIT LOGS
+// ============================================
+
+model AuditLog {
+  id           String      @id @default(uuid())
+  actorId      String?     @map("actor_id")
+  actorEmail   String?     @map("actor_email")
+  action       AuditAction
+  resourceType String      @map("resource_type")
+  resourceId   String?     @map("resource_id")
+  resourceName String?     @map("resource_name")
+  oldValues    Json?       @map("old_values")
+  newValues    Json?       @map("new_values")
+  ipAddress    String?     @map("ip_address")
+  userAgent    String?     @map("user_agent")
+  requestId    String?     @map("request_id")
+  metadata     Json        @default("{}")
+  createdAt    DateTime    @default(now()) @map("created_at")
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([resourceType, resourceId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ============================================
+// REPORTS
+// ============================================
+
+model Report {
+  id           String       @id @default(uuid())
+  name         String
+  type         String
+  templateId   String?      @map("template_id")
+  projectId    String?      @map("project_id")
+  parameters   Json         @default("{}")
+  format       ReportFormat @default(pdf)
+  fileUrl      String?      @map("file_url")
+  fileSize     BigInt?      @map("file_size")
+  status       ReportStatus @default(pending)
+  errorMessage String?      @map("error_message")
+  generatedBy  String       @map("generated_by")
+  generatedAt  DateTime?    @map("generated_at")
+  expiresAt    DateTime?    @map("expires_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+
+  template  Template? @relation(fields: [templateId], references: [id])
+  project   Project?  @relation(fields: [projectId], references: [id])
+  generator User      @relation(fields: [generatedBy], references: [id])
+
+  @@index([templateId])
+  @@index([generatedBy])
+  @@map("reports")
+}
+
+// ============================================
+// CLICKUP INTEGRATION
+// ============================================
+
+model ClickupIntegration {
+  id                    String    @id @default(uuid())
+  projectId             String?   @map("project_id")
+  userId                String    @map("user_id")
+  accessTokenEncrypted  Bytes     @map("access_token_encrypted")
+  refreshTokenEncrypted Bytes?    @map("refresh_token_encrypted")
+  workspaceId           String?   @map("workspace_id")
+  workspaceName         String?   @map("workspace_name")
+  teamId                String?   @map("team_id")
+  settings              Json      @default("{}")
+  lastSyncAt            DateTime? @map("last_sync_at")
+  isActive              Boolean   @default(true) @map("is_active")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  project      Project?             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user         User                 @relation(fields: [userId], references: [id])
+  userMappings ClickupUserMapping[]
+
+  @@map("clickup_integrations")
+}
+
+model ClickupUserMapping {
+  id              String   @id @default(uuid())
+  integrationId   String   @map("integration_id")
+  localUserId     String   @map("local_user_id")
+  clickupUserId   String   @map("clickup_user_id")
+  clickupUsername String?  @map("clickup_username")
+  clickupEmail    String?  @map("clickup_email")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  integration ClickupIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  localUser   User               @relation(fields: [localUserId], references: [id])
+
+  @@unique([integrationId, localUserId])
+  @@map("clickup_user_mappings")
+}

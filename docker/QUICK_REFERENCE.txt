@@ -1,0 +1,57 @@
+╔══════════════════════════════════════════════════════════════════╗
+║          CHECKLIST SYSTEM - DOCKER QUICK REFERENCE               ║
+╚══════════════════════════════════════════════════════════════════╝
+
+📦 DOCKER COMMANDS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Start:      cd docker && docker-compose up -d
+  Stop:       docker-compose down
+  Restart:    docker-compose restart
+  Logs:       docker-compose logs -f
+  Status:     docker-compose ps
+  Test:       ./test-deployment.sh
+
+🔐 DEMO CREDENTIALS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Email:      admin@checklist.local
+  Password:   Admin@123456
+  Role:       Administrator (full access)
+
+🌐 ACCESS URLS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Frontend:   http://localhost:3006
+  Backend:    http://localhost:3005/api/v1
+  API Docs:   http://localhost:3005/api/v1/docs
+  Health:     http://localhost:3005/api/v1/health
+
+📊 SERVICES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ✅ checklist_backend    (NestJS API)       Port 3005
+  ✅ checklist_frontend   (Next.js UI)       Port 3006
+  ✅ checklist_db         (PostgreSQL 16)    Port 5432
+  ✅ checklist_redis      (Redis 7)          Port 6379
+
+🔧 TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  View backend logs:    docker logs checklist_backend
+  View frontend logs:   docker logs checklist_frontend
+  Restart backend:      docker-compose restart backend
+  Full reset:           docker-compose down -v && docker-compose up -d
+
+📚 DOCUMENTATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  docker/README.md              - Full Docker documentation
+  docker/DEPLOYMENT_SUCCESS.md  - Deployment summary
+  docker/test-deployment.sh     - Automated tests
+
+⚠️  PRODUCTION NOTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  • Change default passwords in docker/.env
+  • Update JWT_SECRET and ENCRYPTION_KEY
+  • Configure SSL/TLS certificates
+  • Set up proper backup strategies
+  • Enable monitoring and logging
+
+╔══════════════════════════════════════════════════════════════════╗
+║  All systems operational! Ready to use. 🚀                       ║
+╚══════════════════════════════════════════════════════════════════╝

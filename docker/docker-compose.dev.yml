@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: checklist_system
+      POSTGRES_USER: checklist_user
+      POSTGRES_PASSWORD: checklist_dev_password
+
+  redis:
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass redis_dev_password
+
+  # pgAdmin for database management (development only)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: checklist_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@checklist.local
+      PGADMIN_DEFAULT_PASSWORD: admin_password
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - checklist_network
+
+  # Redis Commander for Redis management (development only)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: checklist_redis_commander
+    restart: unless-stopped
+    environment:
+      REDIS_HOSTS: local:redis:6379:0:redis_dev_password
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    networks:
+      - checklist_network

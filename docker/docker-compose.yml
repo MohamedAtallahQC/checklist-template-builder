@@ -1,0 +1,117 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: checklist_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-checklist_system}
+      POSTGRES_USER: ${DB_USER:-checklist_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-checklist_dev_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-checklist_user} -d ${DB_NAME:-checklist_system}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - checklist_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: checklist_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis_dev_password}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_dev_password}", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - checklist_network
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: checklist_backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 3005
+      API_PREFIX: api/v1
+      DATABASE_URL: postgresql://${DB_USER:-checklist_user}:${DB_PASSWORD:-checklist_dev_password}@postgres:5432/${DB_NAME:-checklist_system}?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_dev_password}
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      JWT_ACCESS_EXPIRATION: 15m
+      JWT_REFRESH_EXPIRATION: 7d
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-your-32-byte-encryption-key-here}
+      CLICKUP_CLIENT_ID: ${CLICKUP_CLIENT_ID:-your-clickup-client-id}
+      CLICKUP_CLIENT_SECRET: ${CLICKUP_CLIENT_SECRET:-your-clickup-client-secret}
+      CLICKUP_REDIRECT_URI: http://localhost:3006/api/integrations/clickup/callback
+      UPLOAD_DIR: ./uploads
+      MAX_FILE_SIZE: 10485760
+      THROTTLE_TTL: 60
+      THROTTLE_LIMIT: 100
+      CORS_ORIGINS: http://localhost:3006
+    ports:
+      - "3005:3005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3005/api/v1/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - checklist_network
+    volumes:
+      - backend_uploads:/app/uploads
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: checklist_frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3005/api/v1
+      NEXT_PUBLIC_APP_NAME: "Checklist System"
+    ports:
+      - "3006:3006"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3006" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - checklist_network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  backend_uploads:
+    driver: local
+
+networks:
+  checklist_network:
+    driver: bridge
